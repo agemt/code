@@ -1,41 +1,103 @@
 {
     "graphs": [
         {
-            "id": "graph-1", 
+            "id": "graph-1",
             "title": "Temp vs Pressure (Primary Correlation)",
-            "x": "Temperature", 
-            "y": "Speed",
-            "hover_data": "Sample_Name",
-            "x_range": [20, 105],
-            "y_range": [95, 510]
+            "x": "A",
+            "y": "B",
+            "x_range": [
+                95,
+                510
+            ],
+            "y_range": [
+                0,
+                1.05
+            ],
+            "baseline_mode": "default_linear",
+            "baseline_kwargs": {}
         },
         {
-            "id": "graph-2", 
+            "id": "graph-2",
             "title": "Kinematic Overview",
-            "x": "Speed", 
-            "y": "Vibration",
-            "hover_data": "Date",
-            "x_range": [95, 510],
-            "y_range": [0, 1.05]
+            "x": "C",
+            "y": "D",
+            "x_range": [
+                95,
+                510
+            ],
+            "y_range": [
+                0,
+                1.05
+            ],
+            "baseline_mode": "default_linear",
+            "baseline_kwargs": {}
+        },
+        {
+            "id": "graph-3",
+            "title": "Kinematic Overview",
+            "x": "F",
+            "y": "G",
+            "x_range": [
+                95,
+                510
+            ],
+            "y_range": [
+                0,
+                1.05
+            ],
+            "baseline_mode": "default_linear",
+            "baseline_kwargs": {}
         }
     ],
+    "hover_data": "A",
     "data_source": {
-        "file_path": "data.xlsx",
+        "file_path": "A.xlsx",
         "sheet_name": "Sheet1"
     },
     "table_config": {
-        "locked_pinned_columns": ["Sample_Name"],
-        "default_pinned_columns": ["Date"]
+        "locked_pinned_columns": [
+            "A"
+        ],
+        "default_pinned_columns": [
+            "B"
+        ],
+        "recent_row_count": 10
     },
     "category_styles": {
-        "First": {"color": "#EF553B", "symbol": "star", "size": 18},
-        "Second": {"color": "#00CC96", "symbol": "diamond", "size": 14},
-        "Baseline (10 Oldest)": {"color": "#AB63FA", "symbol": "square", "size": 12},
-        "Regular": {"color": "#636EFA", "symbol": "circle", "size": 8}
+        "First": {
+            "color": "#EF553B",
+            "symbol": "star",
+            "size": 18
+        },
+        "Recent": {
+            "color": "#00CC96",
+            "symbol": "diamond",
+            "size": 14
+        },
+        "Baseline": {
+            "color": "#AB63FA",
+            "symbol": "square",
+            "size": 12
+        },
+        "Regular": {
+            "color": "#636EFA",
+            "symbol": "circle",
+            "size": 8
+        }
     },
     "baseline_config": {
-        "show_center_line": true,
-        "center_style": {"color": "rgba(128, 128, 128, 0.4)", "dash": "dash", "width": 1},
-        "limit_style": {"color": "#FF0000", "dash": "dot", "width": 2}
+        "show_center_line": false,
+        "show_limit_lines": true,
+        "show_bounds_fill": false,
+        "center_style": {
+            "color": "rgba(80, 80, 80, 0.8)",
+            "dash": "dash",
+            "width": 2
+        },
+        "limit_style": {
+            "color": "#FF0000",
+            "dash": "dot",
+            "width": 2
+        }
     }
 }
