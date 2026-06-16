@@ -92,9 +92,6 @@
     "Perf. Point"
   ],
   "date_col": "Date_tested",
-  "imported_files": [
-    "C:/application/mock_raw_files/test_run_WW342A.txt"
-  ],
   "data_source": {
     "file_path": "data/database.xlsx",
     "sheet_name": "Sheet1"

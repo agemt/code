@@ -425,7 +425,6 @@ class EngineAnalysisApp(QMainWindow):
                 "graphs": [],
                 "locked_col": ["Engine"],
                 "pinned_col": ["Engine", "Date_tested", "Perf. Point"],
-                "imported_files": [],
                 "layout_size": "Medium",
                 "active_filters": {}
             }
