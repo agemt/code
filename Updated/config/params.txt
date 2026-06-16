@@ -1,0 +1,5 @@
+W2K3
+FPR
+PO/PBAR_psia
+W2K3_calc==MAX([@[W2K3]];0)
+FPR_calc=[@[FPR]]*1.01

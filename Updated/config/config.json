@@ -1,0 +1,104 @@
+{
+  "graphs": [
+    {
+      "id": "1",
+      "title": "Fan Outlet Ratio vs Air Flow (FPR vs W2K3)",
+      "x": "Date_tested",
+      "y": "FPR",
+      "hover_data": [
+        "Engine",
+        "Date_tested",
+        "Perf. Point",
+        "Added_by"
+      ],
+      "x_range": [
+        770.0,
+        980.0
+      ],
+      "y_range": [
+        1.35,
+        1.75
+      ],
+      "baseline": "linear"
+    },
+    {
+      "id": "2",
+      "title": "Thrust vs Air Flow (FPR_calc vs W2K3_calc)",
+      "x": "Date_tested",
+      "y": "FPR_calc",
+      "hover_data": [
+        "Engine",
+        "Date_tested",
+        "Perf. Point",
+        "Added_by"
+      ],
+      "x_range": [
+        770.0,
+        980.0
+      ],
+      "y_range": [
+        1.35,
+        1.75
+      ],
+      "baseline": "linear"
+    },
+    {
+      "id": "3",
+      "title": "Pressure Ratio vs Air Flow (PO/PBAR vs W2K3)",
+      "x": "Date_tested",
+      "y": "PO/PBAR_psia",
+      "hover_data": [
+        "Engine",
+        "Date_tested",
+        "Perf. Point",
+        "Added_by"
+      ],
+      "baseline": "linear"
+    },
+    {
+      "id": "4",
+      "title": "Historical FPR Trend",
+      "x": "Date_tested",
+      "y": "FPR_calc",
+      "hover_data": [
+        "Engine",
+        "Date_tested",
+        "Perf. Point",
+        "Added_by"
+      ],
+      "baseline": "ignore"
+    },
+    {
+      "id": "5",
+      "title": "Historical Air Flow Trend",
+      "x": "Date_tested",
+      "y": "W2K3",
+      "hover_data": [
+        "Engine",
+        "Date_tested",
+        "Perf. Point",
+        "Added_by"
+      ],
+      "baseline": "ignore"
+    }
+  ],
+  "locked_col": [
+    "Engine",
+    "Added_by"
+  ],
+  "pinned_col": [
+    "Engine",
+    "Date_tested",
+    "Perf. Point"
+  ],
+  "date_col": "Date_tested",
+  "imported_files": [
+    "C:/application/mock_raw_files/test_run_WW342A.txt"
+  ],
+  "data_source": {
+    "file_path": "data/database.xlsx",
+    "sheet_name": "Sheet1"
+  },
+  "layout_size": "Medium",
+  "active_filters": {}
+}
