@@ -1,5 +1,9 @@
 dash
 dash-ag-grid
+dash-bootstrap-components
+dash-mantine-components
 plotly
 pandas
 numpy
+openpyxl
+PySide6

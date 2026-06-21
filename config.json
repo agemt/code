@@ -1,103 +1,109 @@
 {
-    "graphs": [
-        {
-            "id": "graph-1",
-            "title": "Temp vs Pressure (Primary Correlation)",
-            "x": "A",
-            "y": "B",
-            "x_range": [
-                95,
-                510
-            ],
-            "y_range": [
-                0,
-                1.05
-            ],
-            "baseline_mode": "default_linear",
-            "baseline_kwargs": {}
-        },
-        {
-            "id": "graph-2",
-            "title": "Kinematic Overview",
-            "x": "C",
-            "y": "D",
-            "x_range": [
-                95,
-                510
-            ],
-            "y_range": [
-                0,
-                1.05
-            ],
-            "baseline_mode": "default_linear",
-            "baseline_kwargs": {}
-        },
-        {
-            "id": "graph-3",
-            "title": "Kinematic Overview",
-            "x": "F",
-            "y": "G",
-            "x_range": [
-                95,
-                510
-            ],
-            "y_range": [
-                0,
-                1.05
-            ],
-            "baseline_mode": "default_linear",
-            "baseline_kwargs": {}
-        }
-    ],
-    "hover_data": "A",
-    "data_source": {
-        "file_path": "A.xlsx",
-        "sheet_name": "Sheet1"
+  "date_col": "A",
+  "data_source": {
+    "file_path": "A.xlsx",
+    "sheet_name": "Sheet1"
+  },
+  "locked_col": [
+    "A"
+  ],
+  "pinned_col": [
+    "B"
+  ],
+  "captureheight": 1200,
+  "capturewidth": 1600,
+  "capturescale": 2,
+  "graphs": [
+    {
+      "title": "A vs B",
+      "x": "A",
+      "y": "B",
+      "hover_data": [
+        "C",
+        "D"
+      ],
+      "filter": "Perf",
+      "baseline": "linear",
+      "x_range": [
+        0,
+        10
+      ],
+      "y_range": [
+        0,
+        12
+      ],
+      "tab": "Tab 1"
     },
-    "table_config": {
-        "locked_pinned_columns": [
-            "A"
-        ],
-        "default_pinned_columns": [
-            "B"
-        ],
-        "recent_row_count": 10
+    {
+      "title": "C vs D",
+      "x": "C",
+      "y": "D",
+      "hover_data": [
+        "E",
+        "F"
+      ],
+      "filter": "Perf",
+      "baseline": "linear",
+      "x_range": [
+        0,
+        10
+      ],
+      "y_range": [
+        0,
+        24
+      ],
+      "tab": "Tab 1"
     },
-    "category_styles": {
-        "First": {
-            "color": "#EF553B",
-            "symbol": "star",
-            "size": 18
-        },
-        "Recent": {
-            "color": "#00CC96",
-            "symbol": "diamond",
-            "size": 14
-        },
-        "Baseline": {
-            "color": "#AB63FA",
-            "symbol": "square",
-            "size": 12
-        },
-        "Regular": {
-            "color": "#636EFA",
-            "symbol": "circle",
-            "size": 8
-        }
+    {
+      "title": "F vs G",
+      "x": "F",
+      "y": "G",
+      "hover_data": [
+        "H",
+        "I"
+      ],
+      "filter": "Perf",
+      "baseline": "linear",
+      "x_range": [
+        0,
+        10
+      ],
+      "y_range": [
+        0,
+        32
+      ],
+      "tab": "Tab 1"
     },
-    "baseline_config": {
-        "show_center_line": false,
-        "show_limit_lines": true,
-        "show_bounds_fill": false,
-        "center_style": {
-            "color": "rgba(80, 80, 80, 0.8)",
-            "dash": "dash",
-            "width": 2
-        },
-        "limit_style": {
-            "color": "#FF0000",
-            "dash": "dot",
-            "width": 2
-        }
+    {
+      "x": "D",
+      "y": [
+        "G"
+      ],
+      "hover_data": [],
+      "x_range": [
+        "",
+        ""
+      ],
+      "y_range": [
+        "",
+        ""
+      ],
+      "baseline": "ignore",
+      "tab": "Tab 2",
+      "y_axis_columns": [
+        "G"
+      ],
+      "axis_mode": "single_axis",
+      "dual_axis": false,
+      "trace_mode": "markers"
     }
+  ],
+  "baseline_options": [
+    "ignore",
+    "linear"
+  ],
+  "graph_tabs": [
+    "Tab 1",
+    "Tab 2"
+  ]
 }
