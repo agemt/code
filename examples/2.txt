@@ -1,0 +1,283 @@
+Private Sub CommandButton2_Click()
+    Dim strFileToimport As String, i As Long, j As Long
+    Dim targetrange As Range, wb As Workbook, user As String
+    Dim today As Date
+    
+    jcl = 2
+    user = Application.UserName
+    Set wb = ThisWorkbook
+    Set targetrange = wb.Sheets("File_Updates").Cells(jcl, 1)
+    today = Now
+    While (Len(targetrange.Cells(jcl, 1).Value) <> 0)
+        strFileToimport = targetrange.Cells(jcl, 1).Value
+        targetrange.Cells(jcl, 4).Value = today
+        targetrange.Cells(jcl, 5).Value = user
+        
+        'the previous info sets who was using the trending code and on what day, and which file has been run
+        'in the files updates tab in excel workbook
+        
+        finish_info_fill (strFileToimport)
+        jcl = jcl + 1
+    Wend
+End Sub
+
+Private Sub CommandButton1_Click() 'this code is to find files to compare to the trendline graphs
+    Dim strFileToimport As String, i As Long, j As Long
+    Dim targetrange As Range, wb As Workbook, user As String
+    Dim today As Date
+    
+    strFileToimport = Application.GetOpenFilename _
+    (Title:="Please choose a file to import")
+    
+    If strFileToimport = "False" Then
+        MsgBox "No file selected.", vbExclamation, "Sorry!" 'If chose a file that has already been run
+        Exit Sub                                           'error message will appear
+    Else
+        i = 1
+        user = Application.UserName
+        Set wb = ThisWorkbook
+        Set targetrange = wb.Sheets("File Updates").UsedRange
+        today = Now
+        
+        While (Len(targetrange.Cells(i, 1).Value) <> 0)
+            i = i + 1
+        Wend
+        
+        For j = 1 To i
+            If (targetrange(j, 1).Value = strFileToimport) Then
+                MsgBox "This engine file has already been entered."
+                Exit Sub
+            End If
+        Next j
+        
+        targetrange.Cells(i, 1).Value = strFileToimport
+        targetrange.Cells(i, 4).Value = today
+        targetrange.Cells(i, 5) = user
+        
+        'the previous info sets who was using the trending code and on what day, and which file has been run
+        'in the files updates tab in excel workbook
+        
+        finish_info_fill (strFileToimport)
+    End If
+End Sub
+
+Sub finish_info_fill(filepath As String)
+
+    Dim wbs As Workbook, wbt As Workbook
+    Dim sourcerange As Range, target_range_info As Range
+    Dim target_range_take As Range, target_range_max As Range
+    Dim sname As String, engine As String, test As String
+    Dim iri As Long
+    Dim i As Long, j As Long, k As Long
+    Dim date_tested As Date
+    Dim old_peeks As Date
+    
+    Set wbt = ThisWorkbook
+    Set wbs = Workbooks.Open(filepath)
+    wbs.Sheets(1).Activate
+    sname = ActiveSheet.Name
+    Set sourcerange = wbs.Sheets(sname).UsedRange
+    Set target_range_info = wbt.Sheets("File_Updates").UsedRange
+    Set target_range_take = wbt.Sheets("Take_Off").UsedRange
+    'Set currentCell = target_range_take.Cells(2, 6)
+    engine = sourcerange.Cells(1, 3).Value
+    date_tested = sourcerange.Cells(3, 3).Value
+    old_peeks = #3/15/2024#
+    
+    iri = 1
+    While (Len(target_range_info.Cells(iri, 1).Value) <> 0)
+        iri = iri + 1
+    Wend
+    
+    target_range_info.Cells((iri - 1), 2).Value = engine
+    target_range_info.Cells((iri - 1), 3).Value = date_tested
+    
+    i = 3
+    j = 5
+    
+    'The following lines are to pull our data for "TAKE OFF" parameters
+    
+    While (sourcerange.Cells(3, i).Value <> 0) 'goes through engine peeks file and searches for test dates
+        test = sourcerange.Cells(2, i).Value
+        date_tested = sourcerange.Cells(3, i).Value
+        If (InStr(test, "Take") > 0) Then
+        
+            target_range_take.Rows(2).EntireRow.Insert 'the row in trending file for peeks/takeoff info
+            target_range_take.Rows(2).EntireRow.Interior.Color = xlNone
+            
+            target_range_take.Cells(2, 30).Value = test
+            target_range_take.Cells(2, 1).Value = engine
+            target_range_take.Cells(2, 2).Value = date_tested
+            
+            While (sourcerange.Cells(j, 1).Value <> 0) 'goes through engine peeks file info
+                Select Case sourcerange.Cells(j, 1).Value
+                
+                Case "PT2CALC"
+                    target_range_take.Cells(2, 3).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "PT17_LH"
+                    target_range_take.Cells(2, 4).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "FPR"
+                    target_range_take.Cells(2, 5).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "PBAR psia"
+                    target_range_take.Cells(2, 6).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "W2AR"
+                    target_range_take.Cells(2, 7).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "W2K2"
+                    target_range_take.Cells(2, 8).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "W2K3"
+                    target_range_take.Cells(2, 9).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "FNK3"
+                    target_range_take.Cells(2, 10).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "TT2"
+                    target_range_take.Cells(2, 11).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "SFCK3"
+                    target_range_take.Cells(2, 12).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "EGTK3"
+                    target_range_take.Cells(2, 13).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "EGTK2"
+                    target_range_take.Cells(2, 14).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "T541"
+                    target_range_take.Cells(2, 15).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "T542"
+                    target_range_take.Cells(2, 16).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                    target_range_take.Cells(2, 17).Value = "=MAX(RC[-2],RC[-1])"
+                    
+                Case "T495"
+                    target_range_take.Cells(2, 18).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                    target_range_take.Cells(2, 19).Value = "=(RC[-2]+273.15)/((RC[-8]+273.15))"
+                    
+                    target_range_take.Cells(2, 20).Value = "=(RC[-2]+273.15)/((RC[-9]+273.15))"
+                    
+                Case "T3"
+                    target_range_take.Cells(2, 21).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "PS3"
+                    target_range_take.Cells(2, 22).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                    target_range_take.Cells(2, 23).Value = "=(RC[-2]+273.15)/((RC[-12]+273.15))"
+                    
+                    target_range_take.Cells(2, 24).Value = "=(RC[-2])/(RC[-21])"
+                    
+                Case "N1"
+                    target_range_take.Cells(2, 25).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "N1C"
+                    target_range_take.Cells(2, 26).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "N2C"
+                    target_range_take.Cells(2, 27).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "WFK3"
+                    target_range_take.Cells(2, 28).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "EGT3_LM"
+                    target_range_take.Cells(2, 29).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                'Case "FNK2"
+                'target_range_take.Cells(2, 30).Value = sourcerange.Cells(j, i).Value
+                'j = j + 1
+                
+                'Case "N2R"
+                'target_range_take.Cells(2, 30).Value = sourcerange.Cells(j, i).Value
+                'j = j + 1
+                
+                'target_range_take.Cells(2, 30).Value = "=LinInterp(W2, Interpolation!A2:A2..."
+                
+                Case "P0"
+                    target_range_take.Cells(2, 31).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "PS2 psia"
+                    target_range_take.Cells(2, 32).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "PBARO"
+                    target_range_take.Cells(2, 33).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case "PT17_RH"
+                    target_range_take.Cells(2, 34).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                    target_range_take.Cells(2, 35).Value = "=(RC[-1]+RC[-2])/2"
+                    
+                Case "PS2W_avg"
+                    target_range_take.Cells(2, 36).Value = sourcerange.Cells(j, i).Value
+                    j = j + 1
+                    
+                Case Else
+                    j = j + 1
+                    
+                End Select
+            Wend
+            
+            If date_tested > old_peeks Then
+                i = i + 3
+            Else
+                i = i + 2
+            End If
+            j = 5
+            
+        Else
+            If date_tested > old_peeks Then
+                i = i + 3
+            Else
+                i = i + 2
+            End If
+        End If
+        
+    Wend
+    
+    i = 3
+    j = 5
+    
+    wbs.Close
+    'Call DtSrt
+    
+End Sub
+
+Sub DtSrt()
+    Dim StRw As Integer, EndRw As Integer
+    Sheets("Take_Off").Select
+    StRw = 2 ' Starting Row
+    EndRw = ActiveSheet.Range("B65500").End(xlUp).Row
+    ActiveSheet.Rows(StRw & ":" & EndRw).Select
+    Selection.Sort Key1:=ActiveSheet.Range("C2"), Order1:=xlDescending
+End Sub

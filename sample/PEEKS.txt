@@ -1,0 +1,10 @@
+,Tare,,Motoring,,B3_Take_Off,,B4_Take_Off,,B6_Take_Off,,Warm up Point,,Shutdown,
+,########,########,########,########,########,########,########,########,########,########,########,########,########,########
+,Tare Fullset,STD_DEV,Motoring - Dry,STD_DEV,Perf Point: B3,STD_DEV,Perf Point: Take-Off,STD_DEV,Perf Point: B6,STD_DEV,Warm up Point,STD_DEV,Shutdown,STD_DEV
+A01111,0 B,0 G,1 G,0 G,1 G,0 G,1 G,0 G,1 G,0 G,1 G,0 G,1 G,0 G
+A01112,0 B,0 G,1 G,0 G,1 G,0 G,1 G,0 G,1 G,0 G,1 G,0 G,0 G,0 G
+A06611,0 B,0 G,1 G,0 G,1 G,0 G,1 G,0 G,1 G,0 G,0 G,0 G,0 G,0 G
+A1_Power,0 G,0 G,0 G,0 G,1 G,0 G,1 G,0 G,1 G,0 G,0 G,0 G,0 G,0 G
+A1_at_TO,0 G,0 G,0 G,0 G,1 G,0 G,1 G,0 G,1 G,0 G,0 G,0 G,0 G,0 G
+A27011,0 B,0 G,0 G,0 G,0 G,0 G,0 G,0 G,0 G,0 G,0 G,0 G,0 G,0 G
+A27012,0 B,0 G,0 G,0 G,0 G,0 G,0 G,0 G,0 G,0 G,0 G,0 G,0 G,0 G

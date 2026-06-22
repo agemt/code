@@ -68,6 +68,7 @@ app.layout = dmc.MantineProvider([html.Div(
                     className="me-4",
                 ),
                 dbc.NavItem(dbc.NavLink("Table", id="nav-grid-btn", href="/table", style={"color": "rgb(255, 255, 255)"})),
+                dbc.NavItem(dbc.NavLink("Lookup", href="/", style={"color": "rgb(255, 255, 255)"})),
                 dbc.NavItem(dbc.NavLink("Graph", href="/graphs", style={"color": "rgb(255, 255, 255)"})),
                 dbc.NavItem(dbc.NavLink("Export", href="/export", style={"color": "rgb(255, 255, 255)"})),
                 dbc.NavItem(dbc.NavLink("Configuration", href="/editor", style={"color": "rgb(255, 255, 255)"})),

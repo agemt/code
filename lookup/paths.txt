@@ -1,0 +1,4 @@
+﻿Path,Engine,Date_Tested,Date_Added,Added_By
+C:\graph\sample\preview\with_title_B3_B4_B6.txt,WW284A,2026-06-21 10:15:00,2026-06-22 17:31:07,Matvey Tarmossin
+C:\graph\sample\preview\with_title_B3_B6.txt,WW284A,2026-06-21 11:15:00,2026-06-22 17:31:20,Matvey Tarmossin
+C:\graph\sample\preview\without_title_B3_B4_B6.txt,WW923B,2026-06-22 09:15:00,2026-06-22 17:31:53,Matvey Tarmossin
