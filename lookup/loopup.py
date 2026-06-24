@@ -5,7 +5,8 @@ import getpass
 from datetime import datetime
 import pandas as pd
 import openpyxl
-from openpyxl.utils import get_column_letter
+from openpyxl.utils import get_column_letter, range_boundaries
+from openpyxl.worksheet.table import TableColumn
 
 # ==========================================
 # CONFIGURATION
@@ -36,10 +37,40 @@ def _create_backup(filepath):
     return backup_path
 
 def _expand_excel_table(ws):
-    """Expands Excel ListObject bounds to include newly added data."""
-    if not ws.tables: return
+    """Expands Excel ListObject bounds and keeps table metadata in sync."""
+    if not ws.tables:
+        return
+
     table = list(ws.tables.values())[0]
-    table.ref = f"{table.ref.split(':')[0]}:{get_column_letter(ws.max_column)}{ws.max_row}"
+    min_col, min_row, _max_col, _max_row = range_boundaries(table.ref)
+    new_ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(ws.max_column)}{ws.max_row}"
+    table.ref = new_ref
+
+    # openpyxl does not rebuild table column metadata when only ref is widened.
+    # Excel treats that mismatch as a corrupted ListObject on open.
+    header_row = min_row
+    header_names = []
+    seen_names = {}
+
+    for col_idx in range(min_col, ws.max_column + 1):
+        raw_name = ws.cell(row=header_row, column=col_idx).value
+        base_name = str(raw_name).strip() if raw_name not in {None, ""} else f"Column{col_idx}"
+        unique_name = base_name
+        if unique_name in seen_names:
+            seen_names[unique_name] += 1
+            unique_name = f"{unique_name}_{seen_names[unique_name]}"
+            ws.cell(row=header_row, column=col_idx, value=unique_name)
+        else:
+            seen_names[unique_name] = 1
+        header_names.append(unique_name)
+
+    table.tableColumns = [
+        TableColumn(id=offset, name=header_name)
+        for offset, header_name in enumerate(header_names, start=1)
+    ]
+
+    if table.autoFilter is not None:
+        table.autoFilter.ref = new_ref
 
 def _clean_value(raw_val):
     """Handles commas and numeric conversions."""
@@ -94,6 +125,25 @@ def _get_windows_user():
         or getpass.getuser()
         or "unknown"
     )
+
+
+def _fallback_engine_name(path):
+    """Uses the parent folder name first when engine metadata is missing."""
+    normalized_path = os.path.normpath(str(path or "").strip())
+    parent_name = os.path.basename(os.path.dirname(normalized_path)).strip()
+    if parent_name:
+        return parent_name
+    return os.path.splitext(os.path.basename(normalized_path))[0].strip() or "Unknown"
+
+
+def _describe_path(path):
+    """Returns a compact parent/filename label for progress messages."""
+    normalized_path = os.path.normpath(str(path or "").strip())
+    filename = os.path.basename(normalized_path)
+    parent_name = os.path.basename(os.path.dirname(normalized_path)).strip()
+    if parent_name and filename:
+        return f"{parent_name}\\{filename}"
+    return filename or normalized_path
 
 
 def _normalize_paths_df(df):
@@ -304,7 +354,7 @@ def add_path_registry_entry(new_path, paths_registry=None, added_by=None, engine
     if preview.get("ok") and preview.get("engine_detected"):
         detected_engine = str(preview.get("engine") or "").strip()
 
-    selected_engine = str(engine_name or "").strip() or detected_engine
+    selected_engine = str(engine_name or "").strip() or detected_engine or _fallback_engine_name(normalized_path)
 
     record = {
         "Path": normalized_path,
@@ -411,8 +461,8 @@ def ingest_new_runs(new_runs, all_params, master_excel, engine_overrides=None):
                 existing_date_keys.add(key)
 
     for idx, path in enumerate(new_runs, start=1):
-        filename = os.path.basename(path)
-        yield {"progress": current_step, "total": total_steps, "message": f"Processing [{idx}/{len(new_runs)}]: {filename}"}
+        path_label = _describe_path(path)
+        yield {"progress": current_step, "total": total_steps, "message": f"Processing [{idx}/{len(new_runs)}]: {path_label}"}
         current_step += 1
 
         df = load_raw_grid(path)
@@ -431,7 +481,7 @@ def ingest_new_runs(new_runs, all_params, master_excel, engine_overrides=None):
             or KEYWORD_Y.lower() in engine_val.lower()
             or engine_val.startswith("#")
         ):
-            engine_val = os.path.splitext(os.path.basename(path))[0] or "Unknown"
+            engine_val = _fallback_engine_name(path)
 
         if engine_overrides and path in engine_overrides:
             manual_engine = str(engine_overrides.get(path) or "").strip()
@@ -576,7 +626,7 @@ def retroactive_parameter_update(new_param_str, paths_excel, params_txt, master_
         
         for idx, row in config_df.iterrows():
             path = str(row['Path']).strip()
-            yield {"progress": 10 + idx, "total": total_files + 20, "message": f"Scanning: {os.path.basename(path)}"}
+            yield {"progress": 10 + idx, "total": total_files + 20, "message": f"Scanning: {_describe_path(path)}"}
             
             df = load_raw_grid(path)
             if df is None or df.empty: continue
