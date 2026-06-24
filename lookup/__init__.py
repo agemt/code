@@ -6,8 +6,8 @@ Supports both Excel (legacy) and Access (optimized) backends.
 import os
 import sys
 
-# Environment variable to choose backend: "access" or "excel" (default)
-BACKEND = os.environ.get("LOOKUP_BACKEND", "excel").lower()
+# Environment variable to choose backend: "access" (default) or "excel"
+BACKEND = os.environ.get("LOOKUP_BACKEND", "access").lower()
 
 # Try to use Access backend if available
 if BACKEND == "access":
@@ -21,6 +21,7 @@ if BACKEND == "access":
             preview_run_file,
             _load_all_params,
             clear_and_rescan,
+            fetch_dataset,
         )
         print("✓ Using Access database backend")
     except ImportError as e:
@@ -34,6 +35,8 @@ if BACKEND == "access":
             preview_run_file,
             _load_all_params,
         )
+        clear_and_rescan = None
+        fetch_dataset = None
         BACKEND = "excel"
 else:
     # Use Excel backend (default/original)
@@ -46,6 +49,8 @@ else:
         preview_run_file,
         _load_all_params,
     )
+    clear_and_rescan = None
+    fetch_dataset = None
 
 __all__ = [
     "read_paths_registry",
@@ -55,5 +60,7 @@ __all__ = [
     "retroactive_parameter_update",
     "preview_run_file",
     "_load_all_params",
+    "clear_and_rescan",
+    "fetch_dataset",
     "BACKEND",
 ]

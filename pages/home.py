@@ -9,10 +9,12 @@ import dash
 import dash_ag_grid as dag
 import dash_mantine_components as dmc
 import openpyxl
-from dash import Input, Output, State, callback, dcc, html
+from dash import Input, Output, State, callback, clientside_callback, dcc, html
 
-from lookup.loopup import (
+from lookup import (
+    _load_all_params,
     add_path_registry_entry,
+    clear_and_rescan,
     get_latest_paths,
     ingest_new_runs,
     preview_run_file,
@@ -58,30 +60,39 @@ def _resolve_master_excel_from_config():
     return master_path
 
 
-def _load_all_params():
-    params_path = _resolve_params_path()
-    if not os.path.exists(params_path):
-        return []
+def _path_parts(path_value):
+    normalized_path = os.path.normpath(str(path_value or "").strip())
+    filename = os.path.basename(normalized_path)
+    parent_folder = os.path.basename(os.path.dirname(normalized_path)).strip()
+    compact_label = f"{parent_folder}\\{filename}" if parent_folder and filename else filename or normalized_path
+    return normalized_path, filename, parent_folder, compact_label
 
-    params = []
-    with open(params_path, "r", encoding="utf-8-sig") as f:
-        for raw in f:
-            line = raw.strip()
-            if not line:
-                continue
-            params.append(line)
-            if "=" in line:
-                params.append(line.split("=", 1)[0].strip())
 
-    # De-duplicate while preserving order
-    seen = set()
-    unique = []
-    for p in params:
-        if p in seen:
-            continue
-        seen.add(p)
-        unique.append(p)
-    return unique
+def _suggest_engine_from_path(path_value):
+    _normalized_path, filename, parent_folder, _compact_label = _path_parts(path_value)
+    return parent_folder or os.path.splitext(filename)[0].strip()
+
+
+def _augment_registry_rows(rows):
+    augmented = []
+    for row in rows or []:
+        normalized_path, filename, parent_folder, compact_label = _path_parts(row.get("Path"))
+        updated = dict(row)
+        updated["Path"] = normalized_path
+        updated["Filename"] = filename
+        updated["Parent_Folder"] = parent_folder
+        updated["Path_Label"] = compact_label
+        augmented.append(updated)
+    return augmented
+
+
+def _format_path_for_log(label, path_value):
+    normalized_path, _filename, _parent_folder, compact_label = _path_parts(path_value)
+    if not normalized_path:
+        return f"{label}:"
+    if compact_label and compact_label != normalized_path:
+        return f"{label}: {compact_label} ({normalized_path})"
+    return f"{label}: {normalized_path}"
 
 
 def _create_job(kind):
@@ -173,8 +184,8 @@ def _run_add_file_job(job_id, run_path, selected_engine=None):
         all_params = _load_all_params()
         engine_value = str(selected_engine or "").strip()
 
-        _append_job_log(job_id, f"Target database: {master_excel}")
-        _append_job_log(job_id, f"Source run file: {run_path}")
+        _append_job_log(job_id, _format_path_for_log("Target database", master_excel))
+        _append_job_log(job_id, _format_path_for_log("Source run file", run_path))
         if engine_value:
             _append_job_log(job_id, f"Engine override: {engine_value}")
 
@@ -199,7 +210,7 @@ def _run_add_parameter_job(job_id, param_text, paths_registry):
         registry_path = _resolve_registry_path(paths_registry)
 
         _append_job_log(job_id, f"New parameter: {param_text}")
-        _append_job_log(job_id, f"Paths source: {registry_path}")
+        _append_job_log(job_id, _format_path_for_log("Paths source", registry_path))
 
         for step in retroactive_parameter_update(param_text, registry_path, params_path, master_excel):
             progress = int((step.get("progress", 0) / max(step.get("total", 1), 1)) * 100)
@@ -243,15 +254,21 @@ def _run_rescan_all_job(job_id):
         if not valid_paths:
             raise ValueError("No valid file paths found for rescan.")
 
-        _append_job_log(job_id, f"Master DB: {master_excel}")
+        _append_job_log(job_id, _format_path_for_log("Master DB", master_excel))
         _append_job_log(job_id, f"Params loaded: {len(all_params)}")
         _append_job_log(job_id, f"Paths to scan: {len(valid_paths)}")
         if missing_paths:
             _append_job_log(job_id, f"Skipped missing paths: {len(missing_paths)}")
 
         _set_job_progress(job_id, 5)
-        _append_job_log(job_id, "Preparing master workbook for full rebuild...")
-        _prepare_master_for_rescan(master_excel)
+        if clear_and_rescan:
+            _append_job_log(job_id, "Clearing Access master table for full rebuild...")
+            clear_result = clear_and_rescan(all_params)
+            if isinstance(clear_result, dict) and not clear_result.get("ok", True):
+                raise ValueError(clear_result.get("message", "Could not clear Access master table."))
+        else:
+            _append_job_log(job_id, "Preparing master workbook for full rebuild...")
+            _prepare_master_for_rescan(master_excel)
 
         engine_overrides = {}
         if "Engine" in paths_df.columns:
@@ -280,6 +297,7 @@ def layout():
             dcc.Store(id="add-file-preview-store", data=None),
             dcc.Store(id="add-param-preview-store", data=None),
             dcc.Store(id="rescan-preview-store", data=None),
+            dcc.Store(id="lookup-log-scroll-signal", data=0),
             dcc.Store(id="add-file-job-id", data=None),
             dcc.Store(id="add-param-job-id", data=None),
             dcc.Store(id="rescan-job-id", data=None),
@@ -313,7 +331,9 @@ def layout():
                                 dag.AgGrid(
                                     id="lookup-paths-grid",
                                     columnDefs=[
-                                        {"headerName": "Path", "field": "Path", "flex": 3, "filter": True},
+                                        {"headerName": "File", "field": "Filename", "flex": 1.4, "filter": True},
+                                        {"headerName": "Parent Folder", "field": "Parent_Folder", "flex": 1.2, "filter": True},
+                                        {"headerName": "Path", "field": "Path", "flex": 2.8, "filter": True},
                                         {"headerName": "Engine", "field": "Engine", "flex": 1.2, "filter": True},
                                         {"headerName": "Date Tested", "field": "Date_Tested", "flex": 1.2, "filter": True},
                                         {"headerName": "Date Added", "field": "Date_Added", "flex": 1.2, "sort": "desc", "filter": True},
@@ -469,7 +489,7 @@ def toggle_actions_panel(n_clicks):
     Input("lookup-refresh-btn", "n_clicks"),
 )
 def refresh_lookup_registry(_, _refresh_clicks):
-    rows = get_latest_paths(limit=500)
+    rows = _augment_registry_rows(get_latest_paths(limit=500))
     source_text = f"Registry source: {_resolve_registry_path()}"
     return rows, source_text
 
@@ -512,10 +532,11 @@ def preview_add_file(_n_clicks, run_path):
 
     detected_engine = str(preview.get("engine") or "").strip()
     engine_detected = bool(preview.get("engine_detected"))
+    suggested_engine = detected_engine if engine_detected else _suggest_engine_from_path(preview.get("path"))
     status_message = "Preview complete. Confirm to append to main database."
     status_color = "green"
     if not engine_detected:
-        status_message = "Engine row not detected. Enter engine name manually before confirm."
+        status_message = "Engine row not detected. Parent folder name was suggested; adjust it before confirm if needed."
         status_color = "orange"
 
     return (
@@ -526,7 +547,7 @@ def preview_add_file(_n_clicks, run_path):
         },
         _render_preview(preview),
         dmc.Alert(status_message, color=status_color, variant="light"),
-        detected_engine if engine_detected else "",
+        suggested_engine,
     )
 
 
@@ -740,3 +761,22 @@ def poll_add_parameter_job(_n, job_id):
 )
 def poll_rescan_job(_n, job_id):
     return _poll_job_to_ui(job_id)
+
+
+clientside_callback(
+    """
+    function(addFileLogs, addParamLogs, rescanLogs) {
+        ['add-file-logs', 'add-param-logs', 'rescan-logs'].forEach(function(id) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.scrollTop = el.scrollHeight;
+            }
+        });
+        return Date.now();
+    }
+    """,
+    Output("lookup-log-scroll-signal", "data"),
+    Input("add-file-logs", "children"),
+    Input("add-param-logs", "children"),
+    Input("rescan-logs", "children"),
+)

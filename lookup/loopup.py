@@ -5,7 +5,8 @@ import getpass
 from datetime import datetime
 import pandas as pd
 import openpyxl
-from openpyxl.utils import get_column_letter
+from openpyxl.utils import get_column_letter, range_boundaries
+from openpyxl.worksheet.table import TableColumn
 
 # ==========================================
 # CONFIGURATION
@@ -36,10 +37,40 @@ def _create_backup(filepath):
     return backup_path
 
 def _expand_excel_table(ws):
-    """Expands Excel ListObject bounds to include newly added data."""
-    if not ws.tables: return
+    """Expands Excel ListObject bounds and keeps table metadata in sync."""
+    if not ws.tables:
+        return
+
     table = list(ws.tables.values())[0]
-    table.ref = f"{table.ref.split(':')[0]}:{get_column_letter(ws.max_column)}{ws.max_row}"
+    min_col, min_row, _max_col, _max_row = range_boundaries(table.ref)
+    new_ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(ws.max_column)}{ws.max_row}"
+    table.ref = new_ref
+
+    # openpyxl does not rebuild table column metadata when only ref is widened.
+    # Excel treats that mismatch as a corrupted ListObject on open.
+    header_row = min_row
+    header_names = []
+    seen_names = {}
+
+    for col_idx in range(min_col, ws.max_column + 1):
+        raw_name = ws.cell(row=header_row, column=col_idx).value
+        base_name = str(raw_name).strip() if raw_name not in {None, ""} else f"Column{col_idx}"
+        unique_name = base_name
+        if unique_name in seen_names:
+            seen_names[unique_name] += 1
+            unique_name = f"{unique_name}_{seen_names[unique_name]}"
+            ws.cell(row=header_row, column=col_idx, value=unique_name)
+        else:
+            seen_names[unique_name] = 1
+        header_names.append(unique_name)
+
+    table.tableColumns = [
+        TableColumn(id=offset, name=header_name)
+        for offset, header_name in enumerate(header_names, start=1)
+    ]
+
+    if table.autoFilter is not None:
+        table.autoFilter.ref = new_ref
 
 def _clean_value(raw_val):
     """Handles commas and numeric conversions."""
@@ -94,6 +125,187 @@ def _get_windows_user():
         or getpass.getuser()
         or "unknown"
     )
+
+
+def _fallback_engine_name(path):
+    """Uses the parent folder before the file stem when engine metadata is missing."""
+    normalized_path = os.path.normpath(str(path or "").strip())
+    parent_name = os.path.basename(os.path.dirname(normalized_path)).strip()
+    if parent_name:
+        return parent_name
+    return os.path.splitext(os.path.basename(normalized_path))[0].strip() or "Unknown"
+
+
+def _describe_path(path):
+    """Returns a compact parent/filename label for progress messages."""
+    normalized_path = os.path.normpath(str(path or "").strip())
+    filename = os.path.basename(normalized_path)
+    parent_name = os.path.basename(os.path.dirname(normalized_path)).strip()
+    if parent_name and filename:
+        return f"{parent_name}\\{filename}"
+    return filename or normalized_path
+
+
+def _is_date_like(value):
+    """Best-effort date detection used to stabilize shifting header rows."""
+    raw = str(value).strip()
+    if not raw or raw.lower() in {"nan", "none"}:
+        return False
+
+    parsed = pd.to_datetime(raw, errors="coerce")
+    return pd.notna(parsed)
+
+
+def _matching_take_columns(df, test_row):
+    """Returns data columns whose test cell matches the configured keyword."""
+    matching_cols = []
+    for col_idx in range(2, len(df.columns)):
+        raw_val = df.iloc[test_row, col_idx]
+        if pd.isna(raw_val):
+            continue
+        if KEYWORD_Y.lower() in str(raw_val).lower():
+            matching_cols.append(col_idx)
+    return matching_cols
+
+
+def _detect_date_row(df, test_row, matching_cols):
+    """Finds the nearest row that behaves like the tested-date row."""
+    fallback_row = min(test_row + 1, len(df) - 1)
+    scan_start = max(0, test_row - 2)
+    scan_end = min(len(df), test_row + 4)
+    best_row = None
+    best_score = 0
+
+    for row_idx in range(scan_start, scan_end):
+        if row_idx == test_row:
+            continue
+
+        score = 0
+        for col_idx in matching_cols:
+            raw_val = df.iloc[row_idx, col_idx]
+            if pd.isna(raw_val):
+                continue
+            if _is_date_like(raw_val):
+                score += 1
+
+        if score > best_score:
+            best_row = row_idx
+            best_score = score
+        elif score == best_score and score > 0 and best_row is not None:
+            if abs(row_idx - test_row) < abs(best_row - test_row):
+                best_row = row_idx
+
+    return best_row if best_row is not None and best_score > 0 else fallback_row
+
+
+def _detect_engine_row(df, test_row, date_row, engine_col=2):
+    """Finds a plausible engine row above the test row, if one exists."""
+    for row_idx in range(test_row - 1, -1, -1):
+        if row_idx == date_row:
+            continue
+
+        try:
+            raw_val = df.iloc[row_idx, engine_col]
+        except Exception:
+            continue
+
+        text = str(raw_val).strip()
+        if not text or text.lower() in {"nan", "none"}:
+            continue
+        if KEYWORD_Y.lower() in text.lower():
+            continue
+        if text.startswith("#"):
+            continue
+        if _is_date_like(text):
+            continue
+        return row_idx
+
+    return max(min(test_row - 1, len(df) - 1), 0)
+
+
+def _iter_parameter_rows(first_col_values, start_row=0):
+    """Yields unique parameter-name rows below the detected header block."""
+    seen = set()
+    for row_idx in range(start_row, len(first_col_values)):
+        param_name = str(first_col_values[row_idx]).strip()
+        if not param_name or param_name.lower() in {"nan", "none"}:
+            continue
+        if param_name.startswith("#"):
+            continue
+        if KEYWORD_Y.lower() in param_name.lower():
+            continue
+        if param_name in seen:
+            continue
+        seen.add(param_name)
+        yield row_idx, param_name
+
+
+def iter_lookup_columns(run_path, df=None, engine_override=None, tracked_params=None):
+    """Streams one matched test column at a time with its full parameter payload."""
+    normalized_path = os.path.normpath(str(run_path or "").strip())
+    if not normalized_path or not os.path.exists(normalized_path):
+        return
+
+    if df is None:
+        df = load_raw_grid(normalized_path)
+    if df is None or df.empty or len(df.columns) <= 2:
+        return
+
+    coords = _get_lookup_coords(normalized_path, df=df)
+    tracked_param_set = set(tracked_params) if tracked_params is not None else None
+
+    try:
+        engine_val = str(df.iloc[coords["engine_row"], coords["engine_col"]]).strip()
+    except Exception:
+        engine_val = ""
+
+    if (
+        not engine_val
+        or engine_val.lower() in {"nan", "none", "unknown"}
+        or KEYWORD_Y.lower() in engine_val.lower()
+        or engine_val.startswith("#")
+        or _is_date_like(engine_val)
+    ):
+        engine_val = _fallback_engine_name(normalized_path)
+
+    manual_engine = str(engine_override or "").strip()
+    if manual_engine:
+        engine_val = manual_engine
+
+    first_col = df.iloc[:, 0].astype(str).str.strip().tolist()
+    param_start_row = min(max(coords["test_row"], coords["date_row"], coords.get("engine_row", 0)) + 1, len(first_col))
+    param_rows = list(_iter_parameter_rows(first_col, start_row=param_start_row))
+    source_file = os.path.basename(normalized_path)
+    parent_folder = os.path.basename(os.path.dirname(normalized_path)).strip()
+
+    for data_col in _matching_take_columns(df, coords["test_row"]):
+        test_val = str(df.iloc[coords["test_row"], data_col]).strip()
+        date_val = str(df.iloc[coords["date_row"], data_col]).strip()
+        date_key = _normalize_date_key(date_val)
+        param_values = {}
+
+        for row_idx, param_name in param_rows:
+            if tracked_param_set is not None and param_name not in tracked_param_set:
+                continue
+
+            raw_data_val = df.iloc[row_idx, data_col]
+            cleaned_val = _clean_value(raw_data_val)
+            if cleaned_val is None and tracked_param_set is None:
+                continue
+            param_values[param_name] = cleaned_val
+
+        yield {
+            "path": normalized_path,
+            "source_file": source_file,
+            "parent_folder": parent_folder,
+            "engine": engine_val,
+            "date_tested": date_val,
+            "date_key": date_key,
+            "perf_point": test_val,
+            "data_col": data_col,
+            "param_values": param_values,
+            "coords": coords,
+        }
 
 
 def _normalize_paths_df(df):
@@ -364,8 +576,9 @@ def _get_lookup_coords(filepath, df=None):
                 detected_test_row = r_idx
 
         if detected_test_row is not None and best_take_hits > 0:
-            date_row = min(detected_test_row + 1, len(df) - 1)
-            engine_row = max(detected_test_row - 1, 0)
+            matching_cols = _matching_take_columns(df, detected_test_row)
+            date_row = _detect_date_row(df, detected_test_row, matching_cols)
+            engine_row = _detect_engine_row(df, detected_test_row, date_row, engine_col=2)
             return {
                 "engine_row": engine_row,
                 "engine_col": 2,
@@ -411,8 +624,8 @@ def ingest_new_runs(new_runs, all_params, master_excel, engine_overrides=None):
                 existing_date_keys.add(key)
 
     for idx, path in enumerate(new_runs, start=1):
-        filename = os.path.basename(path)
-        yield {"progress": current_step, "total": total_steps, "message": f"Processing [{idx}/{len(new_runs)}]: {filename}"}
+        path_label = _describe_path(path)
+        yield {"progress": current_step, "total": total_steps, "message": f"Processing [{idx}/{len(new_runs)}]: {path_label}"}
         current_step += 1
 
         df = load_raw_grid(path)
@@ -431,7 +644,7 @@ def ingest_new_runs(new_runs, all_params, master_excel, engine_overrides=None):
             or KEYWORD_Y.lower() in engine_val.lower()
             or engine_val.startswith("#")
         ):
-            engine_val = os.path.splitext(os.path.basename(path))[0] or "Unknown"
+            engine_val = _fallback_engine_name(path)
 
         if engine_overrides and path in engine_overrides:
             manual_engine = str(engine_overrides.get(path) or "").strip()
@@ -576,7 +789,7 @@ def retroactive_parameter_update(new_param_str, paths_excel, params_txt, master_
         
         for idx, row in config_df.iterrows():
             path = str(row['Path']).strip()
-            yield {"progress": 10 + idx, "total": total_files + 20, "message": f"Scanning: {os.path.basename(path)}"}
+            yield {"progress": 10 + idx, "total": total_files + 20, "message": f"Scanning: {_describe_path(path)}"}
             
             df = load_raw_grid(path)
             if df is None or df.empty: continue

@@ -7,6 +7,7 @@ from typing import Any
 import baselines as baseline
 import dash_ag_grid as dag
 import dash_mantine_components as dmc
+import lookup
 import pandas as pd
 import plotly.graph_objects as go
 from dash import dcc, html
@@ -16,6 +17,30 @@ if getattr(sys, 'frozen', False):
     base_path = os.path.dirname(sys.executable)
 else:
     base_path = os.path.dirname(os.path.abspath(__file__))
+
+
+def _collect_required_columns(config, date_col, tracked_params=None):
+    required = []
+
+    def add_column(name):
+        column_name = str(name or "").strip()
+        if column_name and column_name not in required:
+            required.append(column_name)
+
+    add_column("Engine")
+    add_column("Date_Tested")
+    add_column("Perf. Point")
+    add_column(date_col)
+
+    for param_name in tracked_params or []:
+        add_column(param_name)
+
+    for col_name in config.get("locked_col", []):
+        add_column(col_name)
+    for col_name in config.get("pinned_col", []):
+        add_column(col_name)
+
+    return required
 
 
 def get_data(count=False):
@@ -32,16 +57,25 @@ def get_data(count=False):
     sheet_name = data_source.get("sheet_name", 0)
     date_col = config.get("date_col")
 
-    df = pd.read_excel(file_path, sheet_name=sheet_name)
-    df["Full_date"] = pd.to_datetime(df[date_col], errors="coerce")
+    if lookup.BACKEND == "access" and getattr(lookup, "fetch_dataset", None):
+        tracked_params = lookup._load_all_params() if getattr(lookup, "_load_all_params", None) else []
+        required_columns = _collect_required_columns(config, date_col, tracked_params=tracked_params)
+        df = lookup.fetch_dataset(required_columns=required_columns)
+    else:
+        df = pd.read_excel(file_path, sheet_name=sheet_name)
+
+    active_date_col = date_col if date_col in df.columns else "Date_Tested" if "Date_Tested" in df.columns else date_col
+    if active_date_col not in df.columns:
+        df[active_date_col] = pd.NA
+    df["Full_date"] = pd.to_datetime(df[active_date_col], errors="coerce")
     df = df.sort_values(by="Full_date", ascending=False).reset_index(drop=True)
 
     df["sequential_id"] = len(df) - df.index
 
     try:
-        if date_col in df.columns and date_col != "Full_date":
-            df = df.drop(columns=[date_col])
-        df.insert(2, date_col, df["Full_date"].dt.strftime("%Y-%m-%d"))
+        if active_date_col in df.columns and active_date_col != "Full_date":
+            df = df.drop(columns=[active_date_col])
+        df.insert(2, active_date_col, df["Full_date"].dt.strftime("%Y-%m-%d"))
         df.insert(3, "Time", df["Full_date"].dt.strftime("%H:%M:%S"))
     except ValueError:
         pass
