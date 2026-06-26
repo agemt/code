@@ -4,19 +4,29 @@ import dash
 import dash_bootstrap_components as dbc
 from dash import Dash, Input, Output, State, callback, html, dcc
 import dash_mantine_components as dmc
+import compiler_explicit_imports  # noqa: F401
 from functions import get_data
 import threading
 
 prod = False
 #prod = True
 
-# 1. Determine if the script is running as a compiled executable or a raw script
-if getattr(sys, 'frozen', False):
-    # Running inside PyInstaller bundle temporary directory (_MEIxxxxxx)
-    base_path = sys._MEIPass if hasattr(sys, '_MEIPass') else sys._MEIPASS # type: ignore
-else:
-    # Running as a normal local python script
-    base_path = os.path.dirname(os.path.abspath(__file__))
+def _resolve_base_path():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else script_dir
+
+    # PyInstaller exposes _MEIPASS, while Nuitka keeps compiled modules near __file__.
+    meipass_dir = getattr(sys, "_MEIPASS", None)
+    candidates = [meipass_dir, script_dir, exe_dir]
+
+    for candidate in candidates:
+        if candidate and os.path.isdir(os.path.join(candidate, "pages")):
+            return candidate
+
+    return script_dir
+
+
+base_path = _resolve_base_path()
 pages_dir = os.path.join(base_path, "pages")
 
 app = Dash(

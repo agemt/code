@@ -12,10 +12,20 @@ import plotly.graph_objects as go
 from dash import dcc, html
 from plotly.colors import sample_colorscale
 
-if getattr(sys, 'frozen', False):
-    base_path = os.path.dirname(sys.executable)
-else:
-    base_path = os.path.dirname(os.path.abspath(__file__))
+def _resolve_base_path():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else script_dir
+
+    # Prefer a location that contains runtime config regardless of freezing tool.
+    meipass_dir = getattr(sys, "_MEIPASS", None)
+    for candidate in (meipass_dir, script_dir, exe_dir):
+        if candidate and os.path.exists(os.path.join(candidate, "config.json")):
+            return candidate
+
+    return script_dir
+
+
+base_path = _resolve_base_path()
 
 
 def get_data(count=False):

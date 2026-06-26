@@ -1,4 +1,4 @@
-from .loopup import (
+from .lookup import (
     add_path_registry_entry,
     get_all_params,
     get_latest_paths,
