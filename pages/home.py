@@ -8,11 +8,16 @@ from tkinter import Tk, filedialog
 import dash
 import dash_ag_grid as dag
 import dash_mantine_components as dmc
-import openpyxl
 from dash import Input, Output, State, callback, clientside_callback, dcc, html
+
+try:
+    pyodbc = __import__("pyodbc")
+except Exception:
+    pyodbc = None
 
 from lookup import (
     add_path_registry_entry,
+    get_all_params,
     get_latest_paths,
     ingest_new_runs,
     preview_run_file,
@@ -30,17 +35,89 @@ _JOB_LOCK = threading.Lock()
 _JOBS = {}
 
 
+def _access_driver_status():
+    try:
+        if pyodbc is None:
+            return False, "pyodbc module is not installed"
+
+        available = [drv for drv in pyodbc.drivers() if "access driver" in str(drv).lower()]
+        if available:
+            return True, "; ".join(available)
+        return False, "No Microsoft Access ODBC driver found"
+    except Exception as err:
+        return False, f"pyodbc not available: {err}"
+
+
+def _db_tables_status(db_path):
+    try:
+        if pyodbc is None:
+            return False, ["pyodbc module is not installed"]
+
+        conn_str = (
+            "Driver={Microsoft Access Driver (*.mdb, *.accdb)};"
+            f"DBQ={db_path};"
+            "ExtendedAnsiSQL=1;"
+        )
+        with pyodbc.connect(conn_str) as conn:
+            cursor = conn.cursor()
+            rows = cursor.tables(tableType="TABLE").fetchall()
+            table_names = {str(r.table_name) for r in rows}
+        required = {"Data", "Paths", "Params"}
+        missing = sorted(required - table_names)
+        return len(missing) == 0, missing
+    except Exception as err:
+        return False, [str(err)]
+
+
+def _build_startup_health_panel():
+    db_path = _resolve_master_excel_from_config()
+    db_exists = os.path.exists(db_path)
+    is_access = os.path.splitext(db_path)[1].lower() in {".accdb", ".mdb"}
+    driver_ok, driver_msg = _access_driver_status()
+
+    tables_ok = False
+    table_msg = "Skipped"
+    if db_exists and is_access and driver_ok:
+        tables_ok, detail = _db_tables_status(db_path)
+        table_msg = "Ready" if tables_ok else f"Missing/Issue: {', '.join(detail)}"
+    elif not db_exists:
+        table_msg = "Database file not found"
+    elif not is_access:
+        table_msg = "Configured source is not an Access DB"
+    elif not driver_ok:
+        table_msg = "Driver unavailable"
+
+    def _badge(ok, good_text="OK", bad_text="Not ready"):
+        return dmc.Badge(good_text if ok else bad_text, color="green" if ok else "red", variant="light")
+
+    return dmc.Paper(
+        withBorder=True,
+        p="md",
+        mb="md",
+        children=[
+            dmc.Group([dmc.Title("Startup Health", order=4), _badge(db_exists and is_access and driver_ok and tables_ok)], justify="space-between", mb="xs"),
+            dmc.Text(f"DB path: {db_path}", size="sm"),
+            dmc.Group([dmc.Text("Path exists", size="sm"), _badge(db_exists)], gap="xs", mt="xs"),
+            dmc.Group([dmc.Text("Access DB path", size="sm"), _badge(is_access)], gap="xs", mt="xs"),
+            dmc.Group([dmc.Text("ODBC driver", size="sm"), _badge(driver_ok)], gap="xs", mt="xs"),
+            dmc.Text(f"Driver details: {driver_msg}", size="xs", c="dimmed", mt=4),
+            dmc.Group([dmc.Text("Tables (Data / Paths / Params)", size="sm"), _badge(tables_ok)], gap="xs", mt="xs"),
+            dmc.Text(f"Table details: {table_msg}", size="xs", c="dimmed", mt=4),
+        ],
+    )
+
+
 def _resolve_registry_path(custom_path=None):
     if custom_path:
         return os.path.normpath(custom_path)
 
+    configured_db = _resolve_master_excel_from_config()
+    if os.path.splitext(configured_db)[1].lower() in {".accdb", ".mdb"}:
+        return configured_db
+
     xlsx_path = os.path.join(_LOOKUP_DIR, "paths.xlsx")
     txt_path = os.path.join(_LOOKUP_DIR, "paths.txt")
     return xlsx_path if os.path.exists(xlsx_path) else txt_path
-
-
-def _resolve_params_path():
-    return os.path.join(_LOOKUP_DIR, "params.txt")
 
 
 def _resolve_master_excel_from_config():
@@ -94,29 +171,8 @@ def _format_path_for_log(label, path_value):
 
 
 def _load_all_params():
-    params_path = _resolve_params_path()
-    if not os.path.exists(params_path):
-        return []
-
-    params = []
-    with open(params_path, "r", encoding="utf-8-sig") as f:
-        for raw in f:
-            line = raw.strip()
-            if not line:
-                continue
-            params.append(line)
-            if "=" in line:
-                params.append(line.split("=", 1)[0].strip())
-
-    # De-duplicate while preserving order
-    seen = set()
-    unique = []
-    for p in params:
-        if p in seen:
-            continue
-        seen.add(p)
-        unique.append(p)
-    return unique
+    master_db = _resolve_master_excel_from_config()
+    return get_all_params(master_db=master_db)
 
 
 def _create_job(kind):
@@ -229,74 +285,13 @@ def _run_add_file_job(job_id, run_path, selected_engine=None):
 
 def _run_add_parameter_job(job_id, param_text, paths_registry):
     try:
-        params_path = _resolve_params_path()
         master_excel = _resolve_master_excel_from_config()
         registry_path = _resolve_registry_path(paths_registry)
 
         _append_job_log(job_id, f"New parameter: {param_text}")
         _append_job_log(job_id, _format_path_for_log("Paths source", registry_path))
 
-        for step in retroactive_parameter_update(param_text, registry_path, params_path, master_excel):
-            progress = int((step.get("progress", 0) / max(step.get("total", 1), 1)) * 100)
-            _set_job_progress(job_id, progress)
-            _append_job_log(job_id, step.get("message", "Running..."))
-
-        _finish_job(job_id)
-    except Exception as err:
-        _append_job_log(job_id, f"ERROR: {err}")
-        _fail_job(job_id, err)
-
-
-def _prepare_master_for_rescan(master_excel):
-    wb = openpyxl.load_workbook(master_excel)
-    ws = wb.active
-
-    # Rescan contract: first 3 columns are always Engine, Date_Tested, Perf. Point.
-    ws.cell(row=1, column=1, value="Engine")
-    ws.cell(row=1, column=2, value="Date_Tested")
-    ws.cell(row=1, column=3, value="Perf. Point")
-
-    if ws.max_row > 1:
-        ws.delete_rows(2, ws.max_row - 1)
-
-    wb.save(master_excel)
-
-
-def _run_rescan_all_job(job_id):
-    try:
-        master_excel = _resolve_master_excel_from_config()
-        paths_df = read_paths_registry(latest_first=False)
-        all_params = _load_all_params()
-
-        if paths_df.empty or "Path" not in paths_df.columns:
-            raise ValueError("No paths available for rescan.")
-
-        candidate_paths = [str(p).strip() for p in paths_df["Path"].tolist() if str(p).strip()]
-        valid_paths = [p for p in candidate_paths if os.path.exists(p)]
-        missing_paths = [p for p in candidate_paths if not os.path.exists(p)]
-
-        if not valid_paths:
-            raise ValueError("No valid file paths found for rescan.")
-
-        _append_job_log(job_id, _format_path_for_log("Master DB", master_excel))
-        _append_job_log(job_id, f"Params loaded: {len(all_params)}")
-        _append_job_log(job_id, f"Paths to scan: {len(valid_paths)}")
-        if missing_paths:
-            _append_job_log(job_id, f"Skipped missing paths: {len(missing_paths)}")
-
-        _set_job_progress(job_id, 5)
-        _append_job_log(job_id, "Preparing master workbook for full rebuild...")
-        _prepare_master_for_rescan(master_excel)
-
-        engine_overrides = {}
-        if "Engine" in paths_df.columns:
-            for _, row in paths_df.iterrows():
-                path_val = str(row.get("Path", "")).strip()
-                eng_val = str(row.get("Engine", "")).strip()
-                if path_val and eng_val:
-                    engine_overrides[path_val] = eng_val
-
-        for step in ingest_new_runs(valid_paths, all_params, master_excel, engine_overrides=engine_overrides):
+        for step in retroactive_parameter_update(param_text, registry_path, master_excel, master_excel):
             progress = int((step.get("progress", 0) / max(step.get("total", 1), 1)) * 100)
             _set_job_progress(job_id, progress)
             _append_job_log(job_id, step.get("message", "Running..."))
@@ -314,14 +309,13 @@ def layout():
             dcc.Interval(id="lookup-job-poller", interval=800, n_intervals=0),
             dcc.Store(id="add-file-preview-store", data=None),
             dcc.Store(id="add-param-preview-store", data=None),
-            dcc.Store(id="rescan-preview-store", data=None),
             dcc.Store(id="lookup-log-scroll-signal", data=0),
             dcc.Store(id="add-file-job-id", data=None),
             dcc.Store(id="add-param-job-id", data=None),
-            dcc.Store(id="rescan-job-id", data=None),
             dmc.Space(h=52),
             dmc.Title("Lookup Operations", order=2),
             dmc.Text("Run file ingestion and parameter workflows with preview, confirmation, progress bars, and logs.", c="dimmed", mb="md"),
+            _build_startup_health_panel(),
             dmc.Grid(
                 gutter="md",
                 children=[
@@ -429,7 +423,7 @@ def layout():
                                                 ),
                                                 dmc.TextInput(
                                                     id="add-param-paths-source",
-                                                    placeholder=r"Optional paths source (defaults to lookup\\paths.xlsx or paths.txt)",
+                                                    placeholder=r"Optional paths source (defaults to DB Paths table)",
                                                     mb="sm",
                                                 ),
                                                 dmc.Group(
@@ -445,35 +439,6 @@ def layout():
                                                 dmc.Text(id="add-param-progress-text", size="sm", c="dimmed", mb="xs", children="Idle"),
                                                 html.Pre(id="add-param-logs", style={"maxHeight": "200px", "overflowY": "auto", "background": "#f8f9fa", "padding": "10px"}),
                                                 html.Div(id="add-param-runtime-status"),
-                                            ],
-                                        ),
-                                    ),
-                                    dmc.GridCol(
-                                        span=12,
-                                        children=dmc.Paper(
-                                            withBorder=True,
-                                            p="md",
-                                            children=[
-                                                dmc.Title("Rescan All Paths", order=4, mb="sm"),
-                                                dmc.Text(
-                                                    "Rebuilds main database from all paths and all params. This clears existing data rows first.",
-                                                    size="sm",
-                                                    c="dimmed",
-                                                    mb="sm",
-                                                ),
-                                                dmc.Group(
-                                                    [
-                                                        dmc.Button("Preview Rescan", id="rescan-preview-btn", color="blue"),
-                                                        dmc.Button("Confirm Rescan", id="rescan-confirm-btn", color="red"),
-                                                    ],
-                                                    mb="sm",
-                                                ),
-                                                html.Div(id="rescan-preview", className="mb-2"),
-                                                html.Div(id="rescan-status"),
-                                                dmc.Progress(id="rescan-progress", value=0, mb="xs"),
-                                                dmc.Text(id="rescan-progress-text", size="sm", c="dimmed", mb="xs", children="Idle"),
-                                                html.Pre(id="rescan-logs", style={"maxHeight": "200px", "overflowY": "auto", "background": "#f8f9fa", "padding": "10px"}),
-                                                html.Div(id="rescan-runtime-status"),
                                             ],
                                         ),
                                     ),
@@ -662,65 +627,6 @@ def start_add_parameter_job(_n_clicks, preview_data, param_text, paths_source):
     return job_id, dmc.Alert("Add parameter job started.", color="blue", variant="light")
 
 
-@callback(
-    Output("rescan-preview-store", "data"),
-    Output("rescan-preview", "children"),
-    Output("rescan-status", "children"),
-    Input("rescan-preview-btn", "n_clicks"),
-    prevent_initial_call=True,
-)
-def preview_rescan_all(_n_clicks):
-    try:
-        paths_df = read_paths_registry(latest_first=False)
-        all_params = _load_all_params()
-
-        if paths_df.empty or "Path" not in paths_df.columns:
-            return None, dmc.Alert("No paths available for rescan.", color="red", variant="light"), dash.no_update
-
-        candidate_paths = [str(p).strip() for p in paths_df["Path"].tolist() if str(p).strip()]
-        valid_paths = [p for p in candidate_paths if os.path.exists(p)]
-        missing_paths = [p for p in candidate_paths if not os.path.exists(p)]
-
-        preview = dmc.Paper(
-            withBorder=True,
-            p="sm",
-            children=[
-                dmc.Text(f"Total paths in registry: {len(candidate_paths)}", size="sm"),
-                dmc.Text(f"Valid paths to process: {len(valid_paths)}", size="sm"),
-                dmc.Text(f"Missing paths to skip: {len(missing_paths)}", size="sm"),
-                dmc.Text(f"Params loaded: {len(all_params)}", size="sm"),
-                dmc.Text("Master headers enforced: Engine, Date_Tested, Perf. Point", size="sm"),
-            ],
-        )
-
-        return (
-            {"ready": True, "valid_paths": len(valid_paths), "params": len(all_params)},
-            preview,
-            dmc.Alert("Preview complete. Confirm to run full rescan.", color="orange", variant="light"),
-        )
-    except Exception as err:
-        return None, dmc.Alert(f"Rescan preview failed: {err}", color="red", variant="light"), dash.no_update
-
-
-@callback(
-    Output("rescan-job-id", "data"),
-    Output("rescan-status", "children", allow_duplicate=True),
-    Input("rescan-confirm-btn", "n_clicks"),
-    State("rescan-preview-store", "data"),
-    prevent_initial_call=True,
-)
-def start_rescan_all_job(_n_clicks, preview_data):
-    if not preview_data or not preview_data.get("ready"):
-        return dash.no_update, dmc.Alert("Run Preview Rescan before confirmation.", color="red", variant="light")
-    if int(preview_data.get("valid_paths", 0)) <= 0:
-        return dash.no_update, dmc.Alert("No valid paths to rescan.", color="red", variant="light")
-
-    job_id = _create_job("rescan_all")
-    thread = threading.Thread(target=_run_rescan_all_job, args=(job_id,), daemon=True)
-    thread.start()
-    return job_id, dmc.Alert("Rescan job started.", color="blue", variant="light")
-
-
 def _poll_job_to_ui(job_id):
     if not job_id:
         return 0, "Idle", "", dash.no_update
@@ -769,22 +675,10 @@ def poll_add_parameter_job(_n, job_id):
     return _poll_job_to_ui(job_id)
 
 
-@callback(
-    Output("rescan-progress", "value"),
-    Output("rescan-progress-text", "children"),
-    Output("rescan-logs", "children"),
-    Output("rescan-runtime-status", "children"),
-    Input("lookup-job-poller", "n_intervals"),
-    State("rescan-job-id", "data"),
-)
-def poll_rescan_job(_n, job_id):
-    return _poll_job_to_ui(job_id)
-
-
 clientside_callback(
     """
-    function(addFileLogs, addParamLogs, rescanLogs) {
-        ['add-file-logs', 'add-param-logs', 'rescan-logs'].forEach(function(id) {
+    function(addFileLogs, addParamLogs) {
+        ['add-file-logs', 'add-param-logs'].forEach(function(id) {
             const el = document.getElementById(id);
             if (el) {
                 el.scrollTop = el.scrollHeight;
@@ -796,5 +690,4 @@ clientside_callback(
     Output("lookup-log-scroll-signal", "data"),
     Input("add-file-logs", "children"),
     Input("add-param-logs", "children"),
-    Input("rescan-logs", "children"),
 )

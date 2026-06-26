@@ -1,8 +1,8 @@
 {
   "date_col": "A",
   "data_source": {
-    "file_path": "A.xlsx",
-    "sheet_name": "Sheet1"
+    "file_path": "A.accdb",
+    "table_name": "Data"
   },
   "locked_col": [
     "A"

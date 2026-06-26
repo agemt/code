@@ -30,9 +30,25 @@ def get_data(count=False):
     data_source = config.get("data_source", {})
     file_path = data_source.get("file_path")
     sheet_name = data_source.get("sheet_name", 0)
+    table_name = data_source.get("table_name", "Data")
     date_col = config.get("date_col")
 
-    df = pd.read_excel(file_path, sheet_name=sheet_name)
+    source_ext = os.path.splitext(str(file_path or ""))[1].lower()
+    if source_ext in {".accdb", ".mdb"}:
+        try:
+            import pyodbc
+        except Exception as exc:
+            raise RuntimeError("pyodbc is required to read Access DB files.") from exc
+
+        conn_str = (
+            "Driver={Microsoft Access Driver (*.mdb, *.accdb)};"
+            f"DBQ={file_path};"
+            "ExtendedAnsiSQL=1;"
+        )
+        with pyodbc.connect(conn_str) as conn:
+            df = pd.read_sql(f"SELECT * FROM [{table_name}]", conn)
+    else:
+        df = pd.read_excel(file_path, sheet_name=sheet_name)
     df["Full_date"] = pd.to_datetime(df[date_col], errors="coerce")
     df = df.sort_values(by="Full_date", ascending=False).reset_index(drop=True)
 

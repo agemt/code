@@ -6,4 +6,5 @@ plotly
 pandas
 numpy
 openpyxl
+pyodbc
 PySide6
